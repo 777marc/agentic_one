@@ -1,2 +1,4 @@
 boto3
 yfinance
+pyarrow
+requests

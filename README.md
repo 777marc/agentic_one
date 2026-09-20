@@ -4,6 +4,7 @@ Stock research/forecast tooling powered by AWS Bedrock (Claude), with price/fund
 
 ## Contents
 
+- [`scripts/ingest_market_data.py`](scripts/ingest_market_data.py) — scheduled ingestion job that pulls prices, sector/index performance, macro rates (FRED), SEC filings metadata, and news headlines, writing them as partitioned Parquet (locally or to S3) with both `event_time` and `ingested_at` timestamps so backtests never see future information.
 - [`scripts/bedrock_predict.py`](scripts/bedrock_predict.py) — CLI that fetches price/fundamentals for a ticker watchlist, optionally merges in news context and Bedrock Knowledge Base retrieval, then calls Bedrock's Converse API (Claude) to produce a probabilistic directional forecast (up/down/flat) with confidence, drivers, risks, and sources.
 - [`.github/agents/stock-research.agent.md`](.github/agents/stock-research.agent.md) — a VS Code custom agent ("Stock Research Analyst") that orchestrates web research + this script into a structured report.
 
@@ -38,6 +39,17 @@ Key flags:
 | `--no-price-data`        | Skip the `yfinance` price/fundamentals fetch                               |
 
 Each run prints a `[Bedrock usage]` line to stderr with actual input/output token counts and an estimated cost (based on `PRICE_PER_1M_INPUT`/`PRICE_PER_1M_OUTPUT` in the script — update these to match your model/region's actual Bedrock pricing).
+
+## Data ingestion
+
+```powershell
+.\.venv\Scripts\python.exe scripts/ingest_market_data.py --tickers AAPL,NVDA
+.\.venv\Scripts\python.exe scripts/ingest_market_data.py --tickers AAPL,NVDA --bucket my-bucket --prefix market-data
+```
+
+Writes Parquet under `<dataset>/dt=<date>/...` (locally to `./data/` by default, or to `--bucket` in S3). Datasets: `prices`, `sectors` (fixed basket of index/sector ETFs), `rates` (requires `FRED_API_KEY` env var), `filings` (SEC EDGAR), `news` (yfinance headlines). Use `--skip-<dataset>` flags to disable any of them.
+
+Run this on a schedule (Windows Task Scheduler, cron, or an EventBridge-triggered Lambda) rather than pulling full history on every research request. Every row has an `ingested_at` timestamp distinct from `event_time` — always filter `ingested_at <= forecast_time` when backtesting to avoid look-ahead bias.
 
 ## Notes
 
